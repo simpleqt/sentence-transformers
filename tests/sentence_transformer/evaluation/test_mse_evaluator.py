@@ -57,3 +57,53 @@ def test_mse_equal_sentence_counts_preserve_score(evaluator_cls, sentence_count,
     student.encode.assert_called_once()
     assert teacher.encode.call_args.args[0] == sources
     assert student.encode.call_args.args[0] == targets
+
+
+@pytest.mark.parametrize("evaluator_cls", [MSEEvaluator, SparseMSEEvaluator])
+@pytest.mark.parametrize("offset", [0.0, 1.0])
+def test_mse_without_teacher_embeds_source_with_student(evaluator_cls, offset):
+    """Without a teacher, the evaluated model embeds the source sentences too.
+
+    ``teacher_model`` defaults to None, so the evaluator must not require one: the student
+    embeds both sides, e.g. for same-language distillation where teacher and student match.
+    """
+    source_embeddings = np.eye(2, dtype=np.float32)
+    target_embeddings = source_embeddings + offset
+    if evaluator_cls is SparseMSEEvaluator:
+        source_embeddings = torch.from_numpy(source_embeddings)
+        target_embeddings = torch.from_numpy(target_embeddings)
+
+    student = Mock()
+    student.encode.side_effect = [source_embeddings, target_embeddings]
+    student.sparsity.return_value = {"active_dims": 1.0, "sparsity_ratio": 0.5}
+    sources = ["source 0", "source 1"]
+    targets = ["target 0", "target 1"]
+
+    evaluator = evaluator_cls(sources, targets, name="unpaired")
+    metrics = evaluator(student)
+
+    assert metrics["unpaired_negative_mse"] == pytest.approx(-100 * offset**2)
+    assert evaluator.primary_metric == "unpaired_negative_mse"
+    assert student.encode.call_count == 2
+    assert student.encode.call_args_list[0].args[0] == sources
+    assert student.encode.call_args_list[1].args[0] == targets
+
+
+@pytest.mark.parametrize("evaluator_cls", [MSEEvaluator, SparseMSEEvaluator])
+def test_mse_without_teacher_reembeds_source_per_call(evaluator_cls):
+    """The no-teacher source embeddings are not cached: an evaluator reused across models (or
+    checkpoints) re-embeds the source sentences with whatever model it is evaluating."""
+    embeddings = np.eye(2, dtype=np.float32)
+    if evaluator_cls is SparseMSEEvaluator:
+        embeddings = torch.from_numpy(embeddings)
+
+    student = Mock()
+    student.encode.return_value = embeddings
+    student.sparsity.return_value = {"active_dims": 1.0, "sparsity_ratio": 0.5}
+
+    evaluator = evaluator_cls(["source 0", "source 1"], ["target 0", "target 1"])
+    first = evaluator(student)
+    second = evaluator(student)
+
+    assert first["negative_mse"] == second["negative_mse"]
+    assert student.encode.call_count == 4

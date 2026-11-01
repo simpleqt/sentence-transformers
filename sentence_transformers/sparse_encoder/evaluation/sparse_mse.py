@@ -35,6 +35,8 @@ class SparseMSEEvaluator(MSEEvaluator):
         source_sentences (List[str]): Source sentences to embed with the teacher model.
         target_sentences (List[str]): Target sentences to embed with the student model.
         teacher_model (SparseEncoder, optional): The teacher model to compute the source sentence embeddings.
+            If None, the evaluated model embeds the source sentences itself, e.g. for same-language
+            distillation where the teacher and the student are the same model.
         show_progress_bar (bool, optional): Show progress bar when computing embeddings. Defaults to False.
         batch_size (int, optional): Batch size to compute sentence embeddings. Defaults to 32.
         name (str, optional): Name of the evaluator. Defaults to "".

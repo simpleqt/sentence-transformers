@@ -29,6 +29,8 @@ class MSEEvaluator(BaseEvaluator):
         source_sentences (List[str]): Source sentences to embed with the teacher model.
         target_sentences (List[str]): Target sentences to embed with the student model.
         teacher_model (SentenceTransformer, optional): The teacher model to compute the source sentence embeddings.
+            If None, the evaluated model embeds the source sentences itself, e.g. for same-language
+            distillation where the teacher and the student are the same model.
         show_progress_bar (bool, optional): Show progress bar when computing embeddings. Defaults to False.
         batch_size (int, optional): Batch size to compute sentence embeddings. Defaults to 32.
         name (str, optional): Name of the evaluator. Defaults to "".
@@ -91,6 +93,7 @@ class MSEEvaluator(BaseEvaluator):
             )
         self.truncate_dim = truncate_dim
         self.target_sentences = target_sentences
+        self.source_sentences = source_sentences
         self.show_progress_bar = show_progress_bar
         self.batch_size = batch_size
         self.name = name
@@ -100,7 +103,12 @@ class MSEEvaluator(BaseEvaluator):
         self.write_csv = write_csv
         self.primary_metric = "negative_mse"
 
-        self.source_embeddings = self.embed_inputs(teacher_model, source_sentences)
+        if teacher_model is not None:
+            self.source_embeddings = self.embed_inputs(teacher_model, source_sentences)
+        else:
+            # No teacher: the evaluated model embeds the source sentences itself, freshly on
+            # every call, so the source embeddings follow the model as it trains.
+            self.source_embeddings = None
 
     def __call__(
         self, model: SentenceTransformer, output_path: str | None = None, epoch=-1, steps=-1
@@ -115,9 +123,12 @@ class MSEEvaluator(BaseEvaluator):
         if self.truncate_dim is not None:
             out_txt += f" (truncated to {self.truncate_dim})"
 
+        source_embeddings = self.source_embeddings
+        if source_embeddings is None:
+            source_embeddings = self.embed_inputs(model, self.source_sentences)
         target_embeddings = self.embed_inputs(model, self.target_sentences)
 
-        mse = ((self.source_embeddings - target_embeddings) ** 2).mean()
+        mse = ((source_embeddings - target_embeddings) ** 2).mean()
         mse = (mse * 100).item()
 
         logger.info(f"MSE evaluation (lower = better) on the {self.name} dataset{out_txt}:")
