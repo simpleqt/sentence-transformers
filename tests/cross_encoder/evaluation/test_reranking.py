@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from unittest.mock import Mock
 
 import pytest
@@ -129,3 +130,41 @@ def test_empty_documents() -> None:
     }
     model.predict.assert_called_once()
     assert model.predict.call_args.args[0] == [["found", "positive"], ["found", "negative"]]
+
+
+def test_single_document_samples() -> None:
+    """A sample with exactly one candidate document is trivially ranked first and must not crash.
+
+    Both the base metric pass (documents format) and the reranked metric pass used to raise
+    "Computing NDCG is only meaningful when there is more than 1 document" from sklearn.
+    """
+    samples = [
+        # documents format: the first-stage retrieval only returned the gold document
+        {"query": "q1", "positive": ["gold"], "documents": ["gold"]},
+        # negative format: the only candidate is the positive itself
+        {"query": "q2", "positive": ["gold"], "negative": []},
+    ]
+    model = Mock()
+    model.predict.return_value = [0.9, 0.8]
+
+    results = CrossEncoderRerankingEvaluator(samples, always_rerank_positives=False)(model)
+
+    # One relevant document ranks perfectly: MRR, NDCG@10 and AP are all 1.0 for both samples
+    assert results == {
+        "map": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "base_map": 1.0,
+        "base_mrr@10": 1.0,
+        "base_ndcg@10": 1.0,
+    }
+
+
+def test_empty_samples() -> None:
+    """An evaluator without any samples logs and returns instead of crashing on the dataset stats."""
+    model = Mock()
+
+    results = CrossEncoderRerankingEvaluator([], write_csv=False)(model)
+
+    model.predict.assert_not_called()
+    assert all(math.isnan(value) for value in results.values())

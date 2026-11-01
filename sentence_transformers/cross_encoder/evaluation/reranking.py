@@ -257,11 +257,12 @@ class CrossEncoderRerankingEvaluator(BaseEvaluator):
             f"ndcg@{self.at_k}": mean_ndcg,
         }
 
-        logger.info(
-            f"Queries: {num_queries}\t"
-            f"Positives: Min {np.min(num_positives):.1f}, Mean {np.mean(num_positives):.1f}, Max {np.max(num_positives):.1f}\t"
-            f"Negatives: Min {np.min(num_negatives):.1f}, Mean {np.mean(num_negatives):.1f}, Max {np.max(num_negatives):.1f}"
-        )
+        if num_positives:
+            logger.info(
+                f"Queries: {num_queries}\t"
+                f"Positives: Min {np.min(num_positives):.1f}, Mean {np.mean(num_positives):.1f}, Max {np.max(num_positives):.1f}\t"
+                f"Negatives: Min {np.min(num_negatives):.1f}, Mean {np.mean(num_negatives):.1f}, Max {np.max(num_negatives):.1f}"
+            )
         if base_mrr_scores:
             mean_base_mrr = np.mean(base_mrr_scores)
             mean_base_ndcg = np.mean(base_ndcg_scores)
@@ -316,7 +317,10 @@ class CrossEncoderRerankingEvaluator(BaseEvaluator):
                 mrr = 1 / (rank + 1)
                 break
 
-        ndcg = ndcg_score([y_true], [y_pred], k=self.at_k)
+        # sklearn's ndcg_score requires at least two documents. A single-document ranking is trivially
+        # perfect: NDCG@k is 1.0 when the document is relevant, and 0.0 when it is not (a sample with no
+        # relevant documents never reaches this method).
+        ndcg = ndcg_score([y_true], [y_pred], k=self.at_k) if len(y_true) > 1 else float(sum(y_true) > 0)
         ap = average_precision_score(y_true, y_pred)
         return mrr, ndcg, ap
 

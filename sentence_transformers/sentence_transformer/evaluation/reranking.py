@@ -180,9 +180,10 @@ class RerankingEvaluator(BaseEvaluator):
         num_positives = [len(sample["positive"]) for sample in self.samples]
         num_negatives = [len(sample["negative"]) for sample in self.samples]
 
-        logger.info(
-            f"Queries: {len(self.samples)} \t Positives: Min {np.min(num_positives):.1f}, Mean {np.mean(num_positives):.1f}, Max {np.max(num_positives):.1f} \t Negatives: Min {np.min(num_negatives):.1f}, Mean {np.mean(num_negatives):.1f}, Max {np.max(num_negatives):.1f}"
-        )
+        if self.samples:
+            logger.info(
+                f"Queries: {len(self.samples)} \t Positives: Min {np.min(num_positives):.1f}, Mean {np.mean(num_positives):.1f}, Max {np.max(num_positives):.1f} \t Negatives: Min {np.min(num_negatives):.1f}, Mean {np.mean(num_negatives):.1f}, Max {np.max(num_negatives):.1f}"
+            )
         logger.info(f"MAP: {mean_ap * 100:.2f}")
         logger.info(f"MRR@{self.at_k}: {mean_mrr * 100:.2f}")
         logger.info(f"NDCG@{self.at_k}: {mean_ndcg * 100:.2f}")

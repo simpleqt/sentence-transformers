@@ -4,6 +4,7 @@ Tests the RerankingEvaluator
 
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 
 import pytest
@@ -96,3 +97,31 @@ def test_reranking_evaluator_similarity(
         metrics = evaluator(current_model)
         assert metrics["mrr@1"] == score
         assert metrics["ndcg@1"] == score
+
+
+@pytest.mark.parametrize("use_batched_encoding", [True, False])
+def test_reranking_evaluator_all_samples_dropped(use_batched_encoding: bool) -> None:
+    """Samples with an empty positive or negative set are dropped in the constructor.
+
+    When that leaves no samples at all, evaluation must not crash on the dataset statistics.
+    """
+    tokenizer = Tokenizer(WordLevel({"[UNK]": 0, "alpha": 1, "beta": 2, "gamma": 3}, unk_token="[UNK]"))
+    tokenizer.pre_tokenizer = Whitespace()
+    model = SentenceTransformer(
+        modules=[
+            StaticEmbedding(
+                tokenizer, embedding_weights=torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 0.3], [0.1, 0.0]])
+            )
+        ]
+    )
+    model.model_card_data.generate_widget_examples = False
+
+    evaluator = RerankingEvaluator(
+        samples=[{"query": "alpha", "positive": [], "negative": ["gamma"]}],
+        write_csv=False,
+        use_batched_encoding=use_batched_encoding,
+    )
+    assert evaluator.samples == []
+
+    metrics = evaluator(model)
+    assert all(math.isnan(value) for value in metrics.values())
